@@ -258,36 +258,83 @@ export default function Home() {
   ).length;
 
   async function generateAiSummary() {
-  if (!selected) return;
+    if (!selected) return;
 
-  const version = ++requestVersion.current;
-  const decisionId = selected.id;
+    const version = ++requestVersion.current;
+    const decisionId = selected.id;
 
-  setBusy(true);
-  setMessage("");
+    setBusy(true);
+    setMessage("");
 
-  try {
-    const result = await request(
-      `/decisions/${decisionId}/ai-summary`,
-      token.trim(),
-      "POST"
-    );
-
-    if (version === requestVersion.current) {
-      setMessage(
-        `${result.message} Select the report line again after a few seconds to refresh it.`
+    try {
+      const result = await request(
+        `/decisions/${decisionId}/ai-summary`,
+        token.trim(),
+        "POST"
       );
-    }
-  } catch (error) {
-    if (version === requestVersion.current) {
-      setMessage(error.message);
-    }
-  } finally {
-    if (version === requestVersion.current) {
-      setBusy(false);
+
+      if (version === requestVersion.current) {
+        setMessage(
+          `${result.message} Select the report line again after a few seconds to refresh it.`
+        );
+      }
+    } catch (error) {
+      if (version === requestVersion.current) {
+        setMessage(error.message);
+      }
+    } finally {
+      if (version === requestVersion.current) {
+        setBusy(false);
+      }
     }
   }
-}
+  async function downloadReviewPacket() {
+    if (!selected) return;
+
+    const version = ++requestVersion.current;
+    const decisionId = selected.id;
+
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const packet = await request(
+        `/decisions/${decisionId}/review-packet`,
+        token.trim()
+      );
+
+      if (version !== requestVersion.current) return;
+
+      const blob = new Blob(
+        [JSON.stringify(packet, null, 2)],
+        { type: "application/json" }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `${packet.line_id}-review-packet.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      setMessage(
+        "Review packet downloaded. Eligibility and claim amount still require verification."
+      );
+    } catch (error) {
+      if (version === requestVersion.current) {
+        setMessage(error.message);
+      }
+    } finally {
+      if (version === requestVersion.current) {
+        setBusy(false);
+      }
+    }
+  }
 
   return (
     <main>
@@ -641,12 +688,22 @@ export default function Home() {
                     <p>No human reviews recorded.</p>
                   )}
 
-                  <button
-                    onClick={downloadDecision}
-                    disabled={busy}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "12px",
+                      marginTop: "16px",
+                    }}
                   >
-                    Download assessment + reviews JSON
-                  </button>
+                    <button onClick={downloadDecision} disabled={busy}>
+                      Download assessment + reviews JSON
+                    </button>
+
+                    <button onClick={downloadReviewPacket} disabled={busy}>
+                      Download recovery review packet
+                    </button>
+                  </div>
                 </>
               ) : (
                 <p className="empty">

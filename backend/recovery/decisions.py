@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 
 from recovery.db import connection
 from recovery.matcher import match_charges
+from recovery.prep_rules import assess_specific_prep_charge
 
 
 def classify(match, all_matches):
@@ -131,6 +132,16 @@ def classify(match, all_matches):
             "No relevant evidence for this organization "
             "and unit.",
         )
+
+    if charge_type == "inbound_defect_fee":
+        specific = assess_specific_prep_charge(
+            charge, evidence
+        )
+
+        if specific is not None:
+            result.update(specific)
+            result["rule_version"] = "sample-adapter-0.2"
+            return result
 
     if charge_type == "refund_issued_item_not_returned":
         if not charge.get("order_id") or not charge.get("sku"):

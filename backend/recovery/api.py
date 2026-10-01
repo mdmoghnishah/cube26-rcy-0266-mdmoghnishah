@@ -17,7 +17,7 @@ from psycopg.types.json import Jsonb
 
 from recovery.db import connection
 from recovery.decisions import assess_organization
-
+from recovery.packets import build_review_packet
 
 app = FastAPI(
     title="Recovery Manager",
@@ -270,3 +270,14 @@ def generate_ai_summary(
     return {
         "message": "AI summary queued. Refresh the decision shortly."
     }
+@app.get("/decisions/{decision_id}/review-packet")
+def get_review_packet(
+    decision_id: UUID,
+    org_id=Depends(authenticated_org),
+):
+    decision = get_decision(
+        decision_id=decision_id,
+        org_id=org_id,
+    )
+
+    return build_review_packet(decision)
