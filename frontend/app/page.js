@@ -257,37 +257,83 @@ export default function Home() {
     (item) => item.result.assessment === "SILENT"
   ).length;
 
-  async function generateAiSummary() {
-    if (!selected) return;
+async function generateAiSummary() {
+  if (!selected) return;
 
-    const version = ++requestVersion.current;
-    const decisionId = selected.id;
+  const version = ++requestVersion.current;
+  const decisionId = selected.id;
+  const accessToken = token.trim();
 
-    setBusy(true);
-    setMessage("");
+  setBusy(true);
+  setMessage("");
 
-    try {
-      const result = await request(
-        `/decisions/${decisionId}/ai-summary`,
-        token.trim(),
-        "POST"
+  try {
+    await request(
+      `/decisions/${decisionId}/ai-summary`,
+      accessToken,
+      "POST"
+    );
+
+    if (version !== requestVersion.current) return;
+
+    setSelected((current) =>
+      current?.id === decisionId
+        ? {
+            ...current,
+            result: {
+              ...current.result,
+              ai_status: "pending",
+              ai_summary: null,
+              ai_error: null,
+            },
+          }
+        : current
+    );
+
+    setMessage("Generating AI summary…");
+
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      if (version !== requestVersion.current) return;
+
+      const detail = await request(
+        `/decisions/${decisionId}`,
+        accessToken
       );
 
-      if (version === requestVersion.current) {
-        setMessage(
-          `${result.message} Select the report line again after a few seconds to refresh it.`
-        );
+      if (version !== requestVersion.current) return;
+
+      setSelected((current) =>
+        current?.id === decisionId
+          ? { ...current, ...detail }
+          : current
+      );
+
+      if (detail.result.ai_error) {
+        setMessage(detail.result.ai_error);
+        return;
       }
-    } catch (error) {
-      if (version === requestVersion.current) {
-        setMessage(error.message);
-      }
-    } finally {
-      if (version === requestVersion.current) {
-        setBusy(false);
+
+      if (detail.result.ai_status === "complete") {
+        setMessage("AI summary generated.");
+        return;
       }
     }
+
+    setMessage(
+      "Summary is still pending. Select this report line again later to refresh it."
+    );
+  } catch (error) {
+    if (version === requestVersion.current) {
+      setMessage(error.message);
+    }
+  } finally {
+    if (version === requestVersion.current) {
+      setBusy(false);
+    }
   }
+}
   async function downloadReviewPacket() {
     if (!selected) return;
 
