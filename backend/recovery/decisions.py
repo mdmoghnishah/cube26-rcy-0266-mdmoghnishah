@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
@@ -9,6 +9,7 @@ from recovery.db import connection
 from recovery.matcher import match_charges
 from recovery.prep_rules import assess_specific_prep_charge
 from recovery.reconciliation import reconcile_charge
+from recovery.return_rules import assess_return_charge
 
 
 def classify(match, all_matches):
@@ -25,7 +26,7 @@ def classify(match, all_matches):
         "supporting_evidence_ids": [],
         "flags": [],
         "processing_status": "complete",
-        "rule_version": "sample-adapter-0.3",
+        "rule_version": "sample-adapter-0.4",
     }
 
     def finish(assessment, reason, status="NOT_SUPPORTED"):
@@ -36,11 +37,21 @@ def classify(match, all_matches):
         )
         return result
 
+    def apply_evidence_rule(specific):
+        existing_flags = list(result["flags"])
+        specific_flags = list(specific.get("flags", []))
+
+        result.update(specific)
+        result["flags"] = list(
+            dict.fromkeys(existing_flags + specific_flags)
+        )
+
+        return result
+
     try:
         amount = Decimal(str(charge["amount_usd"]))
-        quantity_text = str(charge["quantity"])
-        quantity = int(quantity_text)
-        posted = date.fromisoformat(charge["posted_date"])
+        quantity = int(str(charge["quantity"]))
+        date.fromisoformat(charge["posted_date"])
 
         if (
             not amount.is_finite()
@@ -127,107 +138,18 @@ def classify(match, all_matches):
     if not evidence:
         return finish(
             "SILENT",
-            "No relevant evidence for this organization "
-            "and unit.",
+            "No relevant evidence for this organization and unit.",
         )
 
     if charge_type == "inbound_defect_fee":
-        specific = assess_specific_prep_charge(
-            charge, evidence
-        )
+        specific = assess_specific_prep_charge(charge, evidence)
 
         if specific is not None:
-            # Preserve reconciliation flags when applying
-            # the more specific evidence rule.
-            existing_flags = list(result["flags"])
-            specific_flags = list(specific.get("flags", []))
-
-            result.update(specific)
-            result["flags"] = list(
-                dict.fromkeys(
-                    existing_flags + specific_flags
-                )
-            )
-
-            return result
+            return apply_evidence_rule(specific)
 
     if charge_type == "refund_issued_item_not_returned":
-        if not charge.get("order_id") or not charge.get("sku"):
-            return finish(
-                "UNCERTAIN",
-                "Order ID and SKU are required.",
-                "REVIEW",
-            )
-
-        supporting_ids = []
-
-        for item in evidence:
-            row = item["raw"]
-
-            try:
-                captured = datetime.fromisoformat(
-                    row["captured_at"].replace(
-                        "Z", "+00:00"
-                    )
-                )
-
-                if captured.tzinfo is None:
-                    raise ValueError("Missing timezone")
-
-                captured_date = captured.date()
-
-            except (
-                ValueError,
-                KeyError,
-                TypeError,
-                AttributeError,
-            ):
-                return finish(
-                    "UNCERTAIN",
-                    "Return timestamp is missing or invalid.",
-                    "REVIEW",
-                )
-
-            if (
-                row.get("identity_match") != "yes"
-                or row.get("operator_disposition")
-                in {"uncertain", "pending", "pending_review"}
-                or row.get("order_id") != charge["order_id"]
-                or row.get("ordered_sku") != charge["sku"]
-            ):
-                return finish(
-                    "UNCERTAIN",
-                    "Returned-item identity or review state "
-                    "is insufficient.",
-                    "REVIEW",
-                )
-
-            if captured_date >= posted:
-                return finish(
-                    "UNCERTAIN",
-                    "Return was recorded on or after the "
-                    "posting date. Timing needs review.",
-                    "REVIEW",
-                )
-
-            supporting_ids.append(item["record_id"])
-
-        if quantity != 1:
-            return finish(
-                "UNCERTAIN",
-                "Return record lacks a count to verify "
-                "this multi-unit charge.",
-                "REVIEW",
-            )
-
-        result["supporting_evidence_ids"] = supporting_ids
-
-        return finish(
-            "CONTRADICTS",
-            "Matching item was recorded returned before "
-            "posting. Channel eligibility and claim amount "
-            "still require verification.",
-            "REVIEW",
+        return apply_evidence_rule(
+            assess_return_charge(charge, evidence)
         )
 
     reasons = {
@@ -259,7 +181,6 @@ def classify(match, all_matches):
 
 def assess_organization(org_id):
     matches = match_charges(org_id)
-
     results = [
         classify(match, matches)
         for match in matches
@@ -290,7 +211,6 @@ if __name__ == "__main__":
         "org_demo_bravo",
     ):
         results = assess_organization(organization)
-
         counts = Counter(
             item["assessment"]
             for item in results
