@@ -1,2 +1,15 @@
+[project]
+name = "recovery-manager"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "psycopg[binary]",
+    "pydantic",
+    "python-dotenv",
+    "openai",
+]
+
 [tool.vercel]
 entrypoint = "recovery.api:app"
