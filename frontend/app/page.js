@@ -335,6 +335,35 @@ export default function Home() {
       }
     }
   }
+  async function showPotentialClaim() {
+    if (!selected) return;
+
+    const version = ++requestVersion.current;
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const packet = await request(
+        `/decisions/${selected.id}/review-packet`,
+        token.trim()
+      );
+
+      if (version !== requestVersion.current) return;
+
+      setSelected((current) => ({
+        ...current,
+        potentialClaim: packet.potential_claim,
+      }));
+    } catch (error) {
+      if (version === requestVersion.current) {
+        setMessage(error.message);
+      }
+    } finally {
+      if (version === requestVersion.current) {
+        setBusy(false);
+      }
+    }
+  }
 
   return (
     <main>
@@ -514,6 +543,99 @@ export default function Home() {
                         : `$${selected.result.claim_amount_usd}`}
                     </dd>
                   </dl>
+                  {selected.result.reconciliation && (
+                    <>
+                      <h3>Reimbursement reconciliation</h3>
+
+                      <dl>
+                        <dt>Status</dt>
+                        <dd>
+                          {selected.result.reconciliation.status}
+                        </dd>
+
+                        <dt>Recorded linked reimbursements</dt>
+                        <dd>
+                          {selected.result.reconciliation
+                            .recorded_reimbursement_usd == null
+                            ? "Not established"
+                            : `$${selected.result.reconciliation.recorded_reimbursement_usd}`}
+                        </dd>
+
+                        <dt>Remaining reported balance</dt>
+                        <dd>
+                          {selected.result.reconciliation
+                            .unreimbursed_reported_amount_usd == null
+                            ? "Not established"
+                            : `$${selected.result.reconciliation.unreimbursed_reported_amount_usd}`}
+                        </dd>
+                      </dl>
+
+                      {selected.result.reconciliation.reason && (
+                        <p>{selected.result.reconciliation.reason}</p>
+                      )}
+
+                      {selected.result.reconciliation.flags.length > 0 && (
+                        <p>
+                          Flags:{" "}
+                          {selected.result.reconciliation.flags.join(", ")}
+                        </p>
+                      )}
+
+                      <p className="note">
+                        Reconciliation uses imported report entries.
+                        A remaining balance is not an approved claim amount.
+                      </p>
+                    </>
+                  )}
+                  <h3>Potential recovery claim</h3>
+
+                  <button onClick={showPotentialClaim} disabled={busy}>
+                    Calculate potential claim
+                  </button>
+
+                  {selected.potentialClaim && (
+                    <>
+                      <dl>
+                        <dt>Status</dt>
+                        <dd>{selected.potentialClaim.status}</dd>
+
+                        <dt>Potential amount</dt>
+                        <dd>
+                          {selected.potentialClaim.potential_amount_usd == null
+                            ? "Not established"
+                            : `$${selected.potentialClaim.potential_amount_usd}`}
+                        </dd>
+                      </dl>
+
+                      <p>{selected.potentialClaim.reason}</p>
+
+                      {selected.potentialClaim.amount_basis && (
+                        <p>{selected.potentialClaim.amount_basis}</p>
+                      )}
+
+                      <p className="note">
+                        Conditional estimate. Not approved or ready to submit.
+                        Current demonstration records are synthetic.
+                      </p>
+
+                      <details>
+                        <summary>Required verifications</summary>
+
+                        <ul style={{ paddingLeft: "24px", marginTop: "12px" }}>
+                          {(selected.potentialClaim?.required_verifications ?? []).map(
+                            (check, index) => (
+                              <li
+                                key={`${index}-${check}`}
+                                style={{ marginBottom: "8px", color: "#24332b" }}
+                              >
+                                {check}
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </details>
+                    </>
+                  )}
 
                   <h3>Matched evidence</h3>
 
@@ -565,19 +687,7 @@ export default function Home() {
                     </p>
                   )}
 
-                  <details>
-                    <summary>
-                      Original report row
-                    </summary>
 
-                    <pre>
-                      {JSON.stringify(
-                        selected.result.charge,
-                        null,
-                        2
-                      )}
-                    </pre>
-                  </details>
                   <h3>AI evidence summary</h3>
 
                   <p className="note">

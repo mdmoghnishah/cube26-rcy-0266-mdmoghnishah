@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 from recovery.db import connection
 from recovery.matcher import match_charges
 from recovery.prep_rules import assess_specific_prep_charge
+from recovery.reconciliation import reconcile_charge
 
 
 def classify(match, all_matches):
@@ -24,7 +25,7 @@ def classify(match, all_matches):
         "supporting_evidence_ids": [],
         "flags": [],
         "processing_status": "complete",
-        "rule_version": "sample-adapter-0.1",
+        "rule_version": "sample-adapter-0.3",
     }
 
     def finish(assessment, reason, status="NOT_SUPPORTED"):
@@ -36,8 +37,9 @@ def classify(match, all_matches):
         return result
 
     try:
-        amount = Decimal(charge["amount_usd"])
-        quantity = int(charge["quantity"])
+        amount = Decimal(str(charge["amount_usd"]))
+        quantity_text = str(charge["quantity"])
+        quantity = int(quantity_text)
         posted = date.fromisoformat(charge["posted_date"])
 
         if (
@@ -47,21 +49,29 @@ def classify(match, all_matches):
             or quantity < 1
         ):
             raise ValueError("Invalid financial value")
-    except (ValueError, InvalidOperation):
+
+    except (
+        ValueError,
+        InvalidOperation,
+        KeyError,
+        TypeError,
+    ):
         return finish(
             "UNCERTAIN",
             "Invalid amount, quantity, or posting date.",
             "REVIEW",
         )
 
-    if charge["report_type"] == "reimbursement_report":
+    report_type = charge.get("report_type")
+
+    if report_type == "reimbursement_report":
         return finish(
             "SILENT",
             "This is a reimbursement entry, not a new charge.",
             "REIMBURSEMENT_RECORDED",
         )
 
-    if charge["report_type"] not in {
+    if report_type not in {
         "fee_report",
         "inventory_adjustment",
     }:
@@ -71,44 +81,32 @@ def classify(match, all_matches):
             "REVIEW",
         )
 
-    duplicate_count = sum(
-        item["line_id"] == match["line_id"]
-        for item in all_matches
+    reconciliation = reconcile_charge(match, all_matches)
+
+    result["reconciliation"] = reconciliation
+    result["flags"].extend(reconciliation["flags"])
+    result["related_reimbursement_ids"] = (
+        reconciliation["related_reimbursement_ids"]
     )
 
-    if duplicate_count > 1:
-        result["flags"].append("DUPLICATE_LINE_ID")
+    if reconciliation["status"] == "FULLY_REIMBURSED":
         return finish(
             "UNCERTAIN",
-            "Repeated line ID; review before claiming.",
-            "REVIEW",
+            reconciliation["reason"]
+            + " This reconciliation does not determine "
+            "whether the original allegation was correct.",
+            "ALREADY_REIMBURSED",
         )
 
-    related_reimbursements = [
-        item["line_id"]
-        for item in all_matches
-        if (
-            item["charge"]["report_type"]
-            == "reimbursement_report"
-            and item["unit_id"] == match["unit_id"]
-            and item["charge_type"] == match["charge_type"]
-        )
-    ]
-
-    if related_reimbursements:
-        result["flags"].append("POSSIBLE_REIMBURSEMENT")
-        result["related_reimbursement_ids"] = (
-            related_reimbursements
-        )
+    if reconciliation["blocks_claim"]:
         return finish(
             "UNCERTAIN",
-            "A related reimbursement exists, but allocation "
-            "to this charge is not established.",
+            reconciliation["reason"],
             "REVIEW",
         )
 
     if any(
-        item["identifier_conflicts"]
+        item.get("identifier_conflicts")
         for item in evidence
     ):
         return finish(
@@ -117,7 +115,7 @@ def classify(match, all_matches):
             "REVIEW",
         )
 
-    charge_type = charge["charge_type"]
+    charge_type = charge.get("charge_type")
 
     if charge_type == "fulfilment_fee_weight_tier":
         return finish(
@@ -139,8 +137,18 @@ def classify(match, all_matches):
         )
 
         if specific is not None:
+            # Preserve reconciliation flags when applying
+            # the more specific evidence rule.
+            existing_flags = list(result["flags"])
+            specific_flags = list(specific.get("flags", []))
+
             result.update(specific)
-            result["rule_version"] = "sample-adapter-0.2"
+            result["flags"] = list(
+                dict.fromkeys(
+                    existing_flags + specific_flags
+                )
+            )
+
             return result
 
     if charge_type == "refund_issued_item_not_returned":
@@ -158,14 +166,22 @@ def classify(match, all_matches):
 
             try:
                 captured = datetime.fromisoformat(
-                    row["captured_at"].replace("Z", "+00:00")
+                    row["captured_at"].replace(
+                        "Z", "+00:00"
+                    )
                 )
 
                 if captured.tzinfo is None:
                     raise ValueError("Missing timezone")
 
                 captured_date = captured.date()
-            except (ValueError, KeyError):
+
+            except (
+                ValueError,
+                KeyError,
+                TypeError,
+                AttributeError,
+            ):
                 return finish(
                     "UNCERTAIN",
                     "Return timestamp is missing or invalid.",
@@ -175,7 +191,7 @@ def classify(match, all_matches):
             if (
                 row.get("identity_match") != "yes"
                 or row.get("operator_disposition")
-                == "pending_review"
+                in {"uncertain", "pending", "pending_review"}
                 or row.get("order_id") != charge["order_id"]
                 or row.get("ordered_sku") != charge["sku"]
             ):
@@ -216,9 +232,9 @@ def classify(match, all_matches):
 
     reasons = {
         "inbound_defect_fee": (
-            "The report does not specify the alleged defect "
-            "or event time. Prep observations alone cannot "
-            "settle the charge."
+            "The report does not specify a supported alleged "
+            "defect or event time. Prep observations alone "
+            "cannot settle the charge."
         ),
         "lost_inbound": (
             "Supplier receiving/prep records do not prove "
@@ -243,6 +259,7 @@ def classify(match, all_matches):
 
 def assess_organization(org_id):
     matches = match_charges(org_id)
+
     results = [
         classify(match, matches)
         for match in matches
@@ -273,8 +290,10 @@ if __name__ == "__main__":
         "org_demo_bravo",
     ):
         results = assess_organization(organization)
+
         counts = Counter(
-            item["assessment"] for item in results
+            item["assessment"]
+            for item in results
         )
 
         print(

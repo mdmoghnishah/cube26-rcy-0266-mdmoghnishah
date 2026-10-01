@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from recovery.shipment_rules import assess_dispatch_packaging
 
 
 def parse_timestamp(value):
@@ -26,6 +27,9 @@ def assess_specific_prep_charge(charge, evidence):
 
     if allegation != "polybag_not_sealed":
         return None
+    
+    if charge.get("allegation_scope") == "at_dispatch":
+        return assess_dispatch_packaging(charge, evidence)
 
     def outcome(assessment, reason, ids=None, flags=None):
         return {
