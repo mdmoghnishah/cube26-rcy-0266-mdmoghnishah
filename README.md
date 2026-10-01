@@ -402,8 +402,8 @@ If a credential is exposed, rotate or revoke it. Removing it from a file alone d
 - **GitHub:** https://github.com/mdmoghnishah/cube26-rcy-0266-mdmoghnishah
 -  **Architecture documentation:** [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Demo video:** https://drive.google.com/drive/folders/1g4mpnY7lUL1tk6T_L2pIgOCrxGWAs8y5
-- **Live deployment:** Not provided.
-- **LinkedIn post:** To be added.
+- **Live deployment:** [Recovery Manager](https://cube26-rcy-0266-mdmoghnishah.vercel.app/)
+- **LinkedIn post:** [View the project post](https://www.linkedin.com/posts/contact-moghnishah_github-mdmoghnishahcube26-rcy-0266-mdmoghnishah-share-7511492023514914816-CPhs/)
 
 Update these entries with accessible final links before submitting.
 
