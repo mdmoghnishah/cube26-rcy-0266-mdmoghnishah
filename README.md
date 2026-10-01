@@ -1,321 +1,413 @@
-# Cube Buildathon · 05 · Recovery Manager
+# CUBE Buildathon 2026 · 05 · Recovery Manager
 
-**Commerce Context stream · Round 2 · Individual Build**
+An evidence review application for seller operations teams. It matches financial report lines with receiving, prep, pack and returns records, explains what the available evidence establishes, and preserves human reviews.
 
-> Five agents, one unit, one record that follows it.
-> A physical product arrives, gets prepped, gets shipped, comes back. At every step a person makes a fast judgment that nobody records. **You build the agent that makes one of those judgments, and leaves proof.**
+**Participant:** Mohammed Moghnishah  
+**Track:** RCY · Recovery Manager  
+**Repository:** https://github.com/mdmoghnishah/cube26-rcy-0266-mdmoghnishah
 
-**New here? Read these first:**
+## Problem understanding
 
-1. [`GITHUB-GUIDE.md`](GITHUB-GUIDE.md) explains how to fork the repository, set it up, build and push your work.
-2. [`RULES.md`](RULES.md) covers the repository and engineering rules.
+Sellers need to understand whether operational evidence supports disputing a fee, inventory adjustment or reimbursement event.
 
----
+A matching unit ID alone does not prove that a charge is incorrect. Evidence must address the specific charge, belong to the same organisation, and have consistent identifiers and relevant timing.
 
-## Your problem statement: Recovery Manager
+Recovery Manager brings the report line, matched evidence, assessment and review history together so an operator can inspect the reasoning.
 
-|                              |                                                          |
-| ---------------------------- | -------------------------------------------------------- |
-| **Position in the chain**    | Step 5 of 5. Money back. This step has no camera.        |
-| **Customer**                 | Anyone being charged fees they do not owe                |
-| **What gets recorded**       | Claim filed                                              |
-| **Who consumes your output** | The seller, and whoever reviews the claim at the channel |
+## Solution overview
 
-Amazon charges inbound defect fees, loses units, damages inventory and mis-weighs parcels. Sellers are owed reimbursements they never claim, and charged fees they cannot contest, because contesting requires evidence and they have none. Today this is done by hand, by agencies taking a percentage, or not at all.
+The application:
 
-**This is not a vision agent.** No camera, no capture surface. It reads the evidence records the other four Managers produce, matches them against channel fee and reimbursement reports, and assembles a claim.
+- Imports the provided synthetic CSV files into PostgreSQL.
+- Matches financial lines with relevant operational records.
+- Checks for identifier conflicts and missing information.
+- Saves an assessment and explanation for each financial line.
+- Displays the original report row and matched evidence.
+- Records human reviews without replacing the original agent assessment.
+- Exports the selected assessment and review history as JSON.
+- Includes an OpenAI integration for evidence summaries grouped by unit.
 
-* Ingest a fee or reimbursement report and parse the charges
-* Match each charge to the unit evidence covering it
-* Decide whether the evidence contradicts the charge, supports it, or is insufficient
-* Assemble a disputable claim with evidence attached and a dollar figure
-* State explicitly what it cannot claim, and why
+The current implementation is an evidence review prototype. It does not submit recovery claims or establish approved recoverable amounts.
 
-> **Build against the official evidence contract.** Recovery depends on the evidence produced by the other four Managers. For Round 2, use the evidence contract provided by the organisers as the baseline rather than creating a separate cross-pod contract.
+## Assessment outcomes
 
-> **Your eval is different.** Others measure a model against human labels on units. You measure claim correctness on charges, and you report precision, because a wrongly filed claim costs a seller standing with the channel while a missed one costs only money.
+| Outcome | Meaning |
+| --- | --- |
+| `CONTRADICTS` | Relevant evidence contradicts the reported charge allegation. Further policy and monetary checks may still be required. |
+| `SUPPORTS` | Relevant evidence supports the reported charge allegation. |
+| `SILENT` | Available records do not address the charge, or the line is a reimbursement event recorded separately from a dispute. |
+| `UNCERTAIN` | Evidence exists but missing information, conflicts, timing or unclear requirements prevent a defensible conclusion. |
 
-### The chain you are part of
+Assessments describe evidence. They do not automatically determine claim eligibility.
+
+The current sample run produces only `SILENT` and `UNCERTAIN` outcomes. Automatic `SUPPORTS` reasoning is not implemented. The interface accepts all four outcomes for human reviews.
+
+## Technology stack
+
+| Component | Technology |
+| --- | --- |
+| Frontend | Next.js App Router, React, CSS |
+| Backend | Python, FastAPI |
+| Database | Supabase PostgreSQL |
+| Database access | Psycopg |
+| Request validation | Pydantic |
+| AI summaries | OpenAI Responses API |
+| Configuration | Environment variables and python-dotenv |
+
+LangChain is not required for the current implementation.
+
+## Project structure
 
 ```text
- Supplier delivery      Inbound to Amazon     Outbound to buyer     Customer return        Money back
- ┌──────────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
- │ 01 Receiving │ ───▶ │ 02 Prep      │ ───▶ │ 03 Pack      │ ───▶ │ 04 Returns   │      │ 05 Recovery  │
- │ condition on │      │ compliance   │      │ contents at  │      │ condition &  │      │ reads all    │
- │ arrival      │      │ proof        │      │ seal         │      │ disposition  │      │ four → claim │
- └──────┬───────┘      └──────┬───────┘      └──────┬───────┘      └──────┬───────┘      └──────▲───────┘
-        └─────────────────────┴─────────────────────┴─────────────────────┴─────────────────────┘
+backend/
+  recovery/
+    __init__.py
+    db.py
+    importer.py
+    matcher.py
+    decisions.py
+    api.py
+    ai.py
+  tests/
+    test_isolation.py
+  .env
+
+frontend/
+  app/
+    page.js
+    layout.js
+    globals.css
+  package.json
+
+data/
+  fee_report_sample.csv
+  upstream/
+    receiving_sample.csv
+    prep_sample.csv
+    pack_sample.csv
+    returns_sample.csv
+
+README.md
+RULES.md
+GITHUB-GUIDE.md
 ```
 
-The first four are the same machine: a camera, a model, and a decision bound to a record. What changes is the ruleset, the buyer and the moment. The fifth has no camera. It turns the other four's records into a claim.
+The backend `.env` file is local configuration and must not be committed.
 
-Your output has to be usable by another pod. That's deliberate, and it's scored.
+## Prerequisites
 
----
+- Python 3.11 or later.
+- Node.js and npm compatible with the installed Next.js version.
+- A Supabase PostgreSQL project.
+- A configured `recovery` database schema with organisation isolation.
+- An OpenAI API key to use AI summaries.
+
+Run the following commands from the repository root unless stated otherwise.
+
+## Backend setup
+
+### 1. Create a virtual environment
+
+```powershell
+py -m venv backend\.venv
+```
+
+### 2. Install dependencies
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m pip install fastapi "uvicorn[standard]" "psycopg[binary]" pydantic python-dotenv openai
+```
+
+### 3. Configure environment variables
+
+Create `backend/.env`:
+
+```dotenv
+DATABASE_URL=postgresql://recovery_app.YOUR_PROJECT_REF:URL_ENCODED_PASSWORD@YOUR_SESSION_POOLER_HOST:5432/postgres?sslmode=require
+
+ALPHA_TOKEN=YOUR_LONG_RANDOM_ALPHA_TOKEN
+BRAVO_TOKEN=YOUR_DIFFERENT_LONG_RANDOM_BRAVO_TOKEN
+
+FRONTEND_ORIGIN=http://localhost:3000
+
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Use two distinct organisation tokens of at least 32 characters. Generate them with:
+
+```powershell
+.\backend\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32)); print(secrets.token_urlsafe(32))"
+```
+
+If the database password contains special characters, URL-encode it before placing it in the connection URI.
+
+### 4. Database requirements
+
+The application expects these tables in the `recovery` schema:
+
+| Table | Purpose |
+| --- | --- |
+| `records` | Imported source rows and content hashes |
+| `decisions` | Saved financial-line assessments |
+| `reviews` | Original assessment snapshots and human review data |
+
+Database provisioning is currently a manual prerequisite. The Python setup commands do not create the schema.
+
+The database must have:
+
+- A restricted application role named `recovery_app`.
+- `org_id` on every application table.
+- Row-level security enabled and forced on every application table.
+- Policies scoped to `current_setting('app.org_id', true)`.
+- An organisation-scoped relationship between reviews and decisions.
+- No superuser or row-security bypass privileges for the application role.
+
+The backend sets the organisation context within each database transaction. It rejects database connections using a role with superuser or row-security bypass privileges.
+
+### 5. Import reference data
+
+```powershell
+$env:PYTHONPATH = "backend"
+.\backend\.venv\Scripts\python.exe -m recovery.importer
+```
+
+Repeated imports skip identical rows using organisation, source kind and content hash.
+
+### 6. Generate assessments
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m recovery.decisions
+```
+
+### 7. Start the API
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m uvicorn recovery.api:app --reload --host 127.0.0.1 --port 8000
+```
+
+API documentation:
+
+http://localhost:8000/docs
+
+Health endpoint:
+
+http://localhost:8000/health
+
+## Frontend setup
+
+Open a second PowerShell terminal at the repository root:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open:
+
+http://localhost:3000
+
+The frontend uses `http://localhost:8000` as its default API URL.
+
+If the frontend code uses `NEXT_PUBLIC_API_URL`, an alternative API address can be configured in `frontend/.env.local`:
+
+```dotenv
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Restart the frontend after changing environment variables.
+
+## Usage
+
+1. Enter an Alpha or Bravo organisation access token.
+2. Click **Connect**.
+3. Select a financial report line.
+4. Inspect its original assessment, explanation and matched evidence.
+5. Expand the evidence records to inspect the imported fields.
+6. Optionally request an AI evidence summary.
+7. Select the report line again after processing to refresh the summary.
+8. Enter a human assessment and a reason.
+9. Save the human review.
+10. Download the assessment and review history as JSON.
+
+**Reassess records** creates new assessment records. Earlier assessment versions remain in the database.
+
+Human reviews belong to the selected decision version. A new assessment version does not automatically inherit reviews from an earlier version.
+
+## Matching and decision logic
+
+Matching uses the authenticated organisation and `unit_id`, then selects evidence sources relevant to the charge type.
+
+Where identifiers are present, the matcher checks for conflicts involving SKU, order, FNSKU and shipment identifiers.
+
+The assessment logic also checks for:
+
+- Invalid financial values or quantities.
+- Duplicate report-line identifiers.
+- Potential related reimbursement entries.
+- Missing evidence.
+- Identifier conflicts.
+- Missing measurement or policy information.
+- Return-record timing and identity limitations.
+
+Examples of conservative handling:
+
+- A weight-tier fee remains `SILENT` without measured weight, dimensions and an applicable fee schedule.
+- Receiving or prep records alone do not prove that an inbound unit was lost by the channel.
+- A generic inbound defect fee remains `UNCERTAIN` when the specific alleged defect is unavailable.
+- Related reimbursement entries require reconciliation before a recoverable balance can be established.
+
+Potential duplicates and reimbursements are flagged for review. The application does not automatically allocate reimbursements or calculate a remaining claim balance.
+
+## AI usage
+
+OpenAI generates a narrative summary from the selected unit's available assessments and matched evidence.
+
+The summary integration:
+
+- Groups available checks into one request per unit-summary action.
+- Uses existing report lines and evidence records as input.
+- Instructs the model to reference supplied identifiers.
+- Instructs the model not to invent policies, measurements or image observations.
+- Does not replace the deterministic assessment.
+- Does not approve claim amounts.
+- Uses `store=False` for Responses API requests.
+
+Repeated summary requests can create additional API calls.
+
+The OpenAI connection test succeeded. End-to-end summary generation in the interface remains to be verified.
+
+### Failure handling
+
+A summary request marks processing as `pending` before the model call.
+
+If the model request fails, the imported records and original assessment remain available. The summary stays pending and an error message indicates that it was not completed.
+
+Background processing runs inside the API process. It is not a durable job queue, and a server restart can interrupt pending work.
+
+## Organisation isolation
+
+Demo access tokens map to:
+
+- `org_demo_alpha`
+- `org_demo_bravo`
+
+The backend derives the organisation from the authenticated token. The client cannot choose another organisation through a request body.
+
+PostgreSQL row-level security restricts access to the active organisation.
+
+The current authentication mechanism is intended for demonstration. It does not provide individual user accounts, token expiry, account recovery or role management.
+
+Human reviewers are identified as organisation demo-token holders.
+
+## Human review history
+
+Each saved review includes:
+
+- The original decision snapshot.
+- The reviewed assessment.
+- A required explanation.
+- A reviewer identifier.
+- A creation timestamp.
+
+Human reviews do not overwrite the original assessment and do not approve a claim amount.
 
 ## Reference data
 
-`data/` holds a **dummy** CSV for reference while you design and build. Its columns and meanings are listed in [`data/README.md`](data/README.md).
+All provided CSV rows are synthetic.
 
-**The data is synthetic.** The SKUs, ASINs, FNSKUs, orders, suppliers, operators and amounts are all invented. The requirement flags and fee amounts are **not** Amazon's real rules or fees. Engineering rule 5 applies: look the authoritative rule up. The `photo_refs` paths are placeholders, and no images ship with this repo. Your fixtures and eval set are yours to capture.
+Sample SKUs, identifiers, requirement flags and monetary values are not authoritative marketplace rules or fees.
 
-All five buildathon repos share the same `unit_id` values (`UNIT-0001` … `UNIT-0100`). You can follow one unit from receiving through recovery, the same way the real records will be joined. In the sample, each unit takes one route: **FBA** (prep, then Amazon ships it and charges fees) or **merchant-fulfilled / 3PL** (the seller packs it). So a unit has a Prep record or a Pack record, never both.
+The imported dataset contains:
 
-Recovery also gets `data/upstream/`, a copy of the other four files, so you can practise the join before Round 3 integration.
+| Source | Alpha | Bravo | Total |
+| --- | ---: | ---: | ---: |
+| Financial lines | 40 | 21 | 61 |
+| Receiving | 67 | 33 | 100 |
+| Prep | 41 | 21 | 62 |
+| Pack | 20 | 9 | 29 |
+| Returns | 11 | 13 | 24 |
+| **Total** | **179** | **97** | **276** |
 
----
+Photo paths are sample references. The application does not verify, retrieve or display the referenced images as evidence.
 
-## How this works
+## Verification and current results
 
-You have a defined problem statement, supporting domain information and an engineering repository to build from. Understand the customer and operational workflow before writing code, then build and measure whether the solution works.
+### Organisation isolation test
 
-Your goal is to turn the Recovery Manager problem into a working, measurable agent.
-
-### What you're given
-
-* This problem statement
-* A domain brief covering the real economics, fee structures and what a working day in a warehouse looks like *(shared by the organisers)*
-* The engineering rules in [`RULES.md`](RULES.md)
-* Repository data and supporting resources
-* One fully worked package for Returns Manager (customer letter, PR/FAQ, one-pager) as a reference for the standard expected. **Read it. Don't copy it.**
-
-### What you produce
-
-Build your solution in **your own GitHub fork**.
-
-Your final Round 2 submission should include:
-
-* A working Recovery Manager
-* A `README.md` explaining your solution, setup, assumptions and limitations
-* An `ARCHITECTURE.md`
-* An eval report/results with numbers and named failure modes
-* A working demo/video
-* A deployment URL, where applicable
-* Your mandatory LinkedIn post URL
-
-## Build and submission flow
-
-```text
-Understand
-    ↓
-Build
-    ↓
-Test
-    ↓
-Evaluate
-    ↓
-Document
-    ↓
-Demo / Deploy
-    ↓
-Submit
+```powershell
+$env:PYTHONPATH = "backend"
+.\backend\.venv\Scripts\python.exe backend\tests\test_isolation.py
 ```
 
-Round 2 is an **individual build**.
+Observed results:
 
-The official build phase begins on **25 September 2026 at 9:00 AM IST**.
+- Alpha can read its own test decision.
+- Bravo cannot read or update Alpha's test decision.
 
-Submissions open from **27 September 2026**.
+These checks cover decision access. They do not establish complete isolation coverage for every table or image-storage operation.
 
-The final submission deadline is **1 October 2026 at 6:00 PM IST**.
+### Sample assessment run
 
-The submission form closes permanently at the deadline. **There is no resubmission.**
+| Organisation | Financial lines | SILENT | UNCERTAIN |
+| --- | ---: | ---: | ---: |
+| Alpha | 40 | 26 | 14 |
+| Bravo | 21 | 17 | 4 |
+| **Total** | **61** | **43** | **18** |
 
-All code commits forming your Round 2 submission must be made during the authorised build phase. Do not continue making Round 2 code changes after the build phase ends.
+These are output counts, not accuracy measurements.
 
----
+### Other observed checks
 
-## Evaluation
+- Database connection reports the restricted `recovery_app` role.
+- All 276 reference rows were imported.
+- The frontend displays Alpha's 40 financial lines.
+- A human review was saved while retaining the original assessment.
+- A direct OpenAI API connection test returned successfully.
 
-Recovery Manager is evaluated differently from the vision-based Managers.
+### Evaluation status
 
-The primary question is:
+An independent evaluation on 50 unseen units with two human labellers has not been completed.
 
-> **When Recovery Manager recommends a claim, is that claim actually supported by the available evidence?**
+Claim precision, per-check false positives, false negatives and labeller agreement are therefore not reported. The sample records are not treated as labelled ground truth.
 
-Your evaluation should focus on:
+## Assumptions and limitations
 
-* charge/report parsing,
-* charge-to-unit matching,
-* upstream evidence matching,
-* evidence interpretation,
-* claim correctness,
-* claim precision,
-* uncertainty/review handling,
-* false claims and missed recoverable claims,
-* important failure modes.
+- The integration currently follows the provided CSV shapes. Compatibility with the official cross-manager evidence contract has not been verified.
+- Financial data enters through the command-line importer; a report-upload interface is not implemented.
+- Matching depends on supplied identifiers and does not establish chain of custody.
+- Authoritative marketplace requirements and fee schedules are not integrated.
+- Sample requirement flags are not used as authoritative policy.
+- Automatic `SUPPORTS` reasoning is not implemented.
+- Recoverable amounts are not established.
+- Claims are not filed automatically.
+- Evidence images are not uploaded, verified or served.
+- Content hashes help identify identical imported rows; they do not make records immutable or tamper-evident.
+- AI summaries require human checking against original records.
+- AI background tasks are not durable.
+- The application uses demo organisation tokens rather than production user authentication.
+- Human review does not establish evidence sufficiency or monetary eligibility.
 
-Report the methodology clearly.
+## Security and secrets
 
-### Primary metric
+Never commit API keys, database passwords, organisation tokens or `.env` files containing credentials.
 
-```text
-Claim Precision
-=
-Correctly Supported Claims
---------------------------
-All Claims Recommended
-```
+Use the restricted database role for application requests.
 
-Where measurable, also report:
+If a credential is exposed, rotate or revoke it. Removing it from a file alone does not invalidate the exposed credential.
 
-* total charges evaluated,
-* claims recommended,
-* correctly supported claims,
-* incorrectly recommended claims,
-* missed recoverable claims,
-* `UNCERTAIN` / review rate,
-* latency/cost where relevant.
+## Submission materials
 
----
+- **GitHub:** https://github.com/mdmoghnishah/cube26-rcy-0266-mdmoghnishah
+-  **Architecture documentation:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Demo video:** https://drive.google.com/drive/folders/1g4mpnY7lUL1tk6T_L2pIgOCrxGWAs8y5
+- **Live deployment:** Not provided.
+- **LinkedIn post:** To be added.
 
-## Round 2 Evaluation — 100 Points
+Update these entries with accessible final links before submitting.
 
-| Criterion                                    |  Points |
-| -------------------------------------------- | ------: |
-| Problem Understanding & Solution Relevance   |  **15** |
-| Agent Functionality & Decision Quality       |  **25** |
-| Evaluation, Accuracy & Uncertainty Handling  |  **25** |
-| Evidence, Traceability & Engineering Quality |  **20** |
-| UX, Demo & Documentation                     |  **15** |
-| **TOTAL**                                    | **100** |
+## Author
 
-For Recovery Manager, the evaluation focus is on **claim correctness and evidence quality**, not image-level accuracy.
-
----
-
-## Evidence and decision traceability
-
-Your Recovery Manager should make the claim traceable to the evidence that supports it.
-
-At minimum, the workflow should make it possible to understand:
-
-```text
-Charge
-   ↓
-Unit
-   ↓
-Upstream Evidence
-   ↓
-Evidence Interpretation
-   ↓
-Claim Decision
-   ↓
-Supporting Evidence
-```
-
-Use the official evidence contract provided by the organisers as the baseline for interoperability.
-
-Do not create a separate negotiated evidence schema for Round 2.
-
----
-
-## PASS · FAIL · UNCERTAIN
-
-For upstream checks and evidence states:
-
-* **PASS** — the evidence supports the condition.
-* **FAIL** — the evidence shows the condition is not met.
-* **UNCERTAIN** — the evidence is insufficient for a reliable judgment.
-
-`UNCERTAIN` is not simply a low-confidence PASS.
-
-For Recovery, missing, contradictory or insufficient evidence should lead to an appropriate review/uncertain outcome rather than an unsupported claim.
-
----
-
-## Engineering expectations
-
-* **Tenancy isolation:** If you store persistent data, keep organisation/client data properly isolated.
-* **Batch model calls:** Avoid unnecessary repeated model calls.
-* **Fail open:** A model or dependency failure should not silently discard incoming information. Preserve the available information and move the case into an appropriate pending/review state.
-* **Authoritative rules:** Where an external rule is required, use the authoritative source rather than relying on model memory or synthetic sample values.
-* **Evidence traceability:** Preserve the records used to support recovery decisions.
-
----
-
-## What we're being straight with you about
-
-* **The core assumption is untested.** Nobody knows yet whether the evidence produced by automated upstream Managers will be reliable enough to support recovery claims at scale. Finding out that an assumption does not hold, and documenting that clearly, counts as a useful outcome.
-* **Nobody has spoken to a customer yet.** If you can get a real prep center or seller on a call, ask them to rank the five problems by urgency. Don't ask whether they'd buy what you're building.
-* **The background documents disagree in places.** A contradiction is a finding. Raise it as an Issue labelled `finding`.
-
----
-
-## Submission
-
-### Submissions open
-
-**27 September 2026**
-
-### Final deadline
-
-**1 October 2026 · 6:00 PM IST**
-
-The submission form closes permanently at the deadline.
-
-**There is no reopening and no resubmission.**
-
-Your final submission should include:
-
-* your GitHub fork,
-* working Recovery Manager,
-* `README.md`,
-* `ARCHITECTURE.md`,
-* evaluation results,
-* demo video,
-* deployment URL where applicable,
-* LinkedIn post URL.
-
-### LinkedIn — Mandatory
-
-Publish a LinkedIn post about your Round 2 build.
-
-The post must:
-
-* mention your Recovery Manager build,
-* explain what you built,
-* tag **CodeQuesters**,
-* tag **Sydon.AI**.
-
-Include the LinkedIn post URL in the submission form.
-
----
-
-## Commit rule
-
-All code commits forming your Round 2 submission must be made during the authorised build phase.
-
-Round 2 begins:
-
-**25 September 2026 · 9:00 AM IST**
-
-Once the build phase ends, do not continue making Round 2 code changes.
-
----
-
-## Round 2 → Round 3
-
-Round 2 is about your **individual Recovery Manager**.
-
-Participants selected for Round 3 will work in five-person Pods combining:
-
-```text
-Receiving Manager
-+
-Prep Manager
-+
-Pack Manager
-+
-Returns Manager
-+
-Recovery Manager
-```
-
-The objective is to integrate the five specialised agents into one connected end-to-end commerce system.
-
-Your Round 2 implementation should therefore have clear outputs, structured evidence and an understandable interface for downstream integration.
-
----
-
-*Cube Buildathon · Commerce Context*
+Mohammed Moghnishah  
+CUBE Buildathon 2026 · RCY Recovery Manager
