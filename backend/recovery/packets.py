@@ -1,6 +1,7 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 from recovery.claims import build_potential_claim
+from recovery.policies import policy_context
 
 
 def build_review_packet(decision):
@@ -118,7 +119,8 @@ def build_review_packet(decision):
         "claim_ready": False,
         "approved_claim_amount_usd": None,
         "potential_claim": build_potential_claim(result),
-                "claim_ready": False,
+        "policy_context": policy_context(charge),
+        "claim_ready": False,
         "approved_claim_amount_usd": None,
         "reconciliation": deepcopy(
             result.get("reconciliation")
