@@ -1,0 +1,62 @@
+[
+  {
+    "org_id": "org_eval",
+    "line_id": "SMOKE-FEE-001",
+    "unit_id": "SMOKE-UNIT-001",
+    "charge_type": "inbound_defect_fee",
+    "assessment": "SILENT",
+    "potential_claim": {
+      "status": "NOT_SUPPORTED",
+      "potential_amount_usd": null,
+      "approved_amount_usd": null,
+      "currency": "USD",
+      "submission_ready": false,
+      "amount_basis": null,
+      "evidence_ids": [],
+      "reason": "The original evidence assessment does not contradict the fee.",
+      "required_verifications": [
+        "Evidence authenticity",
+        "Applicable channel requirement and effective date",
+        "Channel dispute eligibility and deadline",
+        "Complete duplicate and reimbursement reconciliation",
+        "Actual financial charge and recoverable amount"
+      ]
+    },
+    "result": {
+      "org_id": "org_eval",
+      "line_id": "SMOKE-FEE-001",
+      "unit_id": "SMOKE-UNIT-001",
+      "charge_type": "inbound_defect_fee",
+      "charge": {
+        "org_id": "org_eval",
+        "line_id": "SMOKE-FEE-001",
+        "unit_id": "SMOKE-UNIT-001",
+        "report_type": "fee_report",
+        "quantity": "1",
+        "amount_usd": "2.00",
+        "posted_date": "2026-06-20",
+        "charge_type": "inbound_defect_fee"
+      },
+      "evidence": [],
+      "assessment": "SILENT",
+      "claim_status": "NOT_SUPPORTED",
+      "claim_amount_usd": null,
+      "currency": "USD",
+      "reason": "No relevant evidence for this organization and unit.",
+      "supporting_evidence_ids": [],
+      "flags": [],
+      "processing_status": "complete",
+      "rule_version": "sample-adapter-0.3",
+      "reconciliation": {
+        "status": "NO_LINKED_REIMBURSEMENT",
+        "flags": [],
+        "related_reimbursement_ids": [],
+        "recorded_reimbursement_usd": null,
+        "unreimbursed_reported_amount_usd": null,
+        "blocks_claim": false,
+        "reason": ""
+      },
+      "related_reimbursement_ids": []
+    }
+  }
+]

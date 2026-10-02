@@ -1,0 +1,19 @@
+[
+  {
+    "org_id": "org_eval",
+    "line_id": "SMOKE-FEE-001",
+    "unit_id": "SMOKE-UNIT-001",
+    "charge_type": "inbound_defect_fee",
+    "charge": {
+      "org_id": "org_eval",
+      "line_id": "SMOKE-FEE-001",
+      "unit_id": "SMOKE-UNIT-001",
+      "report_type": "fee_report",
+      "quantity": "1",
+      "amount_usd": "2.00",
+      "posted_date": "2026-06-20",
+      "charge_type": "inbound_defect_fee"
+    },
+    "evidence": []
+  }
+]
