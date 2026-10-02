@@ -1,76 +1,105 @@
-# CUBE Buildathon 2026 · 05 · Recovery Manager
+# CUBE Buildathon 2026 · Recovery Manager
 
-An evidence review application for seller operations teams. It matches financial report lines with receiving, prep, pack and returns records, explains what the available evidence establishes, and preserves human reviews.
+Recovery Manager helps seller operations teams review financial charges against operational evidence. It matches records, explains whether the evidence contradicts or supports an allegation, identifies missing information, and assembles conditional recovery review packets.
 
 **Participant:** Mohammed Moghnishah  
 **Track:** RCY · Recovery Manager  
-**Repository:** https://github.com/mdmoghnishah/cube26-rcy-0266-mdmoghnishah
+**Repository:** [GitHub](https://github.com/mdmoghnishah/cube26-rcy-0266-mdmoghnishah)
+
+## Project links
+
+- **Live application:** [Recovery Manager](https://cube26-rcy-0266-mdmoghnishah.vercel.app/)
+- **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Demo video:** [Google Drive](https://drive.google.com/drive/folders/1g4mpnY7lUL1tk6T_L2pIgOCrxGWAs8y5)
+- **LinkedIn:** [Project post](https://www.linkedin.com/posts/contact-moghnishah_github-mdmoghnishahcube26-rcy-0266-mdmoghnishah-share-7511492023514914816-CPhs/)
 
 ## Problem understanding
 
-Sellers need to understand whether operational evidence supports disputing a fee, inventory adjustment or reimbursement event.
+Financial charges can appear weeks after the operational event that caused them. Sellers may struggle to locate the relevant inspection, shipment or return records when reviewing a charge.
 
-A matching unit ID alone does not prove that a charge is incorrect. Evidence must address the specific charge, belong to the same organisation, and have consistent identifiers and relevant timing.
+A matching identifier alone does not establish that a charge is incorrect. A defensible assessment also needs relevant observations, consistent identity, suitable timing, applicable channel requirements and a justified financial basis.
 
-Recovery Manager brings the report line, matched evidence, assessment and review history together so an operator can inspect the reasoning.
+Recovery Manager brings the charge, evidence, assessment, reconciliation and human review together.
+
+It works with structured records. It does not perform camera capture or image analysis.
 
 ## Solution overview
 
-The application:
+The application supports:
 
-- Imports the provided synthetic CSV files into PostgreSQL.
-- Matches financial lines with relevant operational records.
-- Checks for identifier conflicts and missing information.
-- Saves an assessment and explanation for each financial line.
-- Displays the original report row and matched evidence.
-- Records human reviews without replacing the original agent assessment.
-- Exports the selected assessment and review history as JSON.
-- Includes an OpenAI integration for evidence summaries grouped by unit.
+- Importing the organiser’s synthetic reference CSVs.
+- Uploading financial reports through the dashboard.
+- Validating report fields before writing any rows.
+- Enforcing organisation ownership using authenticated access tokens and PostgreSQL row-level security.
+- Matching financial lines to relevant operational evidence.
+- Checking identifier conflicts, specific packaging allegations and documented return receipts.
+- Detecting duplicate charge and reimbursement references.
+- Reconciling explicitly linked reimbursements.
+- Calculating conditional potential amounts for supported fee scenarios.
+- Generating AI summaries with one model request per unit-summary action.
+- Preserving human reviews alongside original assessments.
+- Exporting assessment JSON and recovery review packets.
 
-The current implementation is an evidence review prototype. It does not submit recovery claims or establish approved recoverable amounts.
+This is a prototype for evidence review and potential claim preparation. It does not file claims or approve recoverable amounts.
 
 ## Assessment outcomes
 
 | Outcome | Meaning |
 | --- | --- |
-| `CONTRADICTS` | Relevant evidence contradicts the reported charge allegation. Further policy and monetary checks may still be required. |
-| `SUPPORTS` | Relevant evidence supports the reported charge allegation. |
-| `SILENT` | Available records do not address the charge, or the line is a reimbursement event recorded separately from a dispute. |
-| `UNCERTAIN` | Evidence exists but missing information, conflicts, timing or unclear requirements prevent a defensible conclusion. |
+| `CONTRADICTS` | Relevant structured evidence contradicts the reported allegation. |
+| `SUPPORTS` | Relevant structured evidence supports the reported allegation. |
+| `SILENT` | Available evidence does not address the allegation, or the line records a reimbursement rather than a new charge. |
+| `UNCERTAIN` | Missing information, conflicts, ambiguous observations or unresolved reconciliation prevent a defensible conclusion. |
 
-Assessments describe evidence. They do not automatically determine claim eligibility.
+Assessments describe evidence. They do not establish marketplace eligibility or prove source authenticity.
 
-The current sample run produces only `SILENT` and `UNCERTAIN` outcomes. Automatic `SUPPORTS` reasoning is not implemented. The interface accepts all four outcomes for human reviews.
+Automatic `CONTRADICTS` and `SUPPORTS` outcomes are implemented for specific packaging scenarios. Return-receipt reasoning can produce `CONTRADICTS` when the required documented identity, recipient, quantity and timing agree.
 
 ## Technology stack
 
 | Component | Technology |
 | --- | --- |
 | Frontend | Next.js App Router, React, CSS |
-| Backend | Python, FastAPI |
+| API | Python, FastAPI |
 | Database | Supabase PostgreSQL |
 | Database access | Psycopg |
 | Request validation | Pydantic |
 | AI summaries | OpenAI Responses API |
 | Configuration | Environment variables and python-dotenv |
 
-LangChain is not required for the current implementation.
-
 ## Project structure
 
 ```text
 backend/
   recovery/
-    __init__.py
     db.py
     importer.py
+    report_upload.py
     matcher.py
     decisions.py
-    api.py
+    prep_rules.py
+    shipment_rules.py
+    return_rules.py
+    reconciliation.py
+    claims.py
+    packets.py
+    policies.py
+    evaluation.py
     ai.py
+    api.py
+    seed_demo.py
+    seed_reconciliation_demo.py
+    seed_returns_demo.py
   tests/
-    test_isolation.py
-  .env
+    test_prep_rules.py
+    test_shipment_rules.py
+    test_return_rules.py
+    test_reconciliation.py
+    test_claims.py
+    test_ai_failures.py
+    test_report_upload.py
+    test_all_table_isolation.py
+  policy_snapshots/
 
 frontend/
   app/
@@ -87,24 +116,27 @@ data/
     pack_sample.csv
     returns_sample.csv
 
+evaluation/
 README.md
+ARCHITECTURE.md
 RULES.md
 GITHUB-GUIDE.md
 ```
 
-The backend `.env` file is local configuration and must not be committed.
+Environment files and credentials must remain outside version control.
 
 ## Prerequisites
 
-- Python 3.11 or later.
+- Python: local development was tested with Python 3.11. Use a version compatible with the backend deployment metadata; the deployment configuration targets Python 3.12 or later.
 - Node.js and npm compatible with the installed Next.js version.
-- A Supabase PostgreSQL project.
-- A configured `recovery` database schema with organisation isolation.
-- An OpenAI API key to use AI summaries.
+- A Supabase PostgreSQL database with the application schema provisioned.
+- An OpenAI API key for AI summaries.
 
-Run the following commands from the repository root unless stated otherwise.
+The database schema is a manual setup prerequisite. Installing Python packages does not create the tables or isolation policies.
 
 ## Backend setup
+
+Run these commands from the repository root using PowerShell.
 
 ### 1. Create a virtual environment
 
@@ -134,36 +166,34 @@ OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-Use two distinct organisation tokens of at least 32 characters. Generate them with:
+Use distinct organisation tokens of at least 32 characters. Generate them with:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32)); print(secrets.token_urlsafe(32))"
 ```
 
-If the database password contains special characters, URL-encode it before placing it in the connection URI.
+URL-encode special characters in the database password.
 
-### 4. Database requirements
+### 4. Provision the database
 
-The application expects these tables in the `recovery` schema:
+The `recovery` schema requires:
 
 | Table | Purpose |
 | --- | --- |
-| `records` | Imported source rows and content hashes |
-| `decisions` | Saved financial-line assessments |
-| `reviews` | Original assessment snapshots and human review data |
+| `records` | Imported source rows, organisation ownership and content hashes |
+| `decisions` | Saved assessment versions |
+| `reviews` | Original decision snapshots and human reviews |
 
-Database provisioning is currently a manual prerequisite. The Python setup commands do not create the schema.
+Required database controls:
 
-The database must have:
+- A restricted `recovery_app` role without superuser or RLS-bypass privileges.
+- RLS enabled and forced on every application table.
+- Organisation policies using `current_setting('app.org_id', true)`.
+- A unique constraint on `(org_id, kind, content_hash)` in `records`.
+- An organisation-scoped foreign key from reviews to decisions.
+- Appropriate grants for reading, importing, saving decisions and recording reviews.
 
-- A restricted application role named `recovery_app`.
-- `org_id` on every application table.
-- Row-level security enabled and forced on every application table.
-- Policies scoped to `current_setting('app.org_id', true)`.
-- An organisation-scoped relationship between reviews and decisions.
-- No superuser or row-security bypass privileges for the application role.
-
-The backend sets the organisation context within each database transaction. It rejects database connections using a role with superuser or row-security bypass privileges.
+The backend sets the organisation context within each transaction and rejects connections using superuser or RLS-bypass roles.
 
 ### 5. Import reference data
 
@@ -172,7 +202,7 @@ $env:PYTHONPATH = "backend"
 .\backend\.venv\Scripts\python.exe -m recovery.importer
 ```
 
-Repeated imports skip identical rows using organisation, source kind and content hash.
+Identical imported rows are skipped using organisation, source kind and content hash.
 
 ### 6. Generate assessments
 
@@ -183,20 +213,15 @@ Repeated imports skip identical rows using organisation, source kind and content
 ### 7. Start the API
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m uvicorn recovery.api:app --reload --host 127.0.0.1 --port 8000
+.\backend\.venv\Scripts\python.exe -m uvicorn recovery.api:app --app-dir backend --reload
 ```
 
-API documentation:
-
-http://localhost:8000/docs
-
-Health endpoint:
-
-http://localhost:8000/health
+- API documentation: http://localhost:8000/docs
+- Health endpoint: http://localhost:8000/health
 
 ## Frontend setup
 
-Open a second PowerShell terminal at the repository root:
+Open a second terminal:
 
 ```powershell
 cd frontend
@@ -204,122 +229,216 @@ npm install
 npm run dev
 ```
 
-Open:
+Open http://localhost:3000.
 
-http://localhost:3000
-
-The frontend uses `http://localhost:8000` as its default API URL.
-
-If the frontend code uses `NEXT_PUBLIC_API_URL`, an alternative API address can be configured in `frontend/.env.local`:
+The frontend defaults to `http://localhost:8000`. To configure another API address, create `frontend/.env.local`:
 
 ```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Restart the frontend after changing environment variables.
+Restart the frontend after changing environment variables. For deployment, configure the public API URL and set the backend’s `FRONTEND_ORIGIN` to the frontend origin.
 
 ## Usage
 
-1. Enter an Alpha or Bravo organisation access token.
-2. Click **Connect**.
-3. Select a financial report line.
-4. Inspect its original assessment, explanation and matched evidence.
-5. Expand the evidence records to inspect the imported fields.
-6. Optionally request an AI evidence summary.
-7. Select the report line again after processing to refresh the summary.
-8. Enter a human assessment and a reason.
-9. Save the human review.
-10. Download the assessment and review history as JSON.
+1. Enter an Alpha or Bravo organisation token and connect.
+2. Upload a financial CSV, or use previously imported records.
+3. Select a report line.
+4. Inspect the assessment, explanation, evidence and reimbursement reconciliation.
+5. Calculate a potential claim where supported.
+6. Generate an optional AI unit summary.
+7. Record a human assessment with a reason.
+8. Download assessment JSON or a recovery review packet.
 
-**Reassess records** creates new assessment records. Earlier assessment versions remain in the database.
+**Reassess records** creates new decision versions. Earlier versions remain in the database.
 
-Human reviews belong to the selected decision version. A new assessment version does not automatically inherit reviews from an earlier version.
+Human reviews belong to their selected decision version. They are not automatically transferred to later assessments.
 
-## Matching and decision logic
+## Financial report upload
 
-Matching uses the authenticated organisation and `unit_id`, then selects evidence sources relevant to the charge type.
+The dashboard accepts UTF-8 CSV files with these required columns:
 
-Where identifiers are present, the matcher checks for conflicts involving SKU, order, FNSKU and shipment identifiers.
+```csv
+line_id,report_type,unit_id,charge_type,quantity,amount_usd,posted_date
+```
 
-The assessment logic also checks for:
+Supported report types:
 
-- Invalid financial values or quantities.
-- Duplicate report-line identifiers.
-- Potential related reimbursement entries.
-- Missing evidence.
-- Identifier conflicts.
-- Missing measurement or policy information.
-- Return-record timing and identity limitations.
+- `fee_report`
+- `inventory_adjustment`
+- `reimbursement_report`
 
-Examples of conservative handling:
+Supported charge types:
 
-- A weight-tier fee remains `SILENT` without measured weight, dimensions and an applicable fee schedule.
-- Receiving or prep records alone do not prove that an inbound unit was lost by the channel.
-- A generic inbound defect fee remains `UNCERTAIN` when the specific alleged defect is unavailable.
-- Related reimbursement entries require reconciliation before a recoverable balance can be established.
+- `inbound_defect_fee`
+- `lost_inbound`
+- `damaged_in_warehouse`
+- `fulfilment_fee_weight_tier`
+- `refund_issued_item_not_returned`
 
-Potential duplicates and reimbursements are flagged for review. The application does not automatically allocate reimbursements or calculate a remaining claim balance.
+Validation includes:
 
-## AI usage
+- Maximum file size of 2 MB and 5,000 report rows.
+- Required headers and nonempty required values.
+- Valid report and charge types.
+- Positive integer quantities.
+- Nonnegative amounts with at most two decimal places.
+- Valid dates in `YYYY-MM-DD` format.
+- USD currency.
+- Duplicate line IDs within the upload.
+- Consistent CSV field counts and UTF-8 encoding.
+- Organisation ownership matching the authenticated account.
 
-OpenAI generates a narrative summary from the selected unit's available assessments and matched evidence.
+The complete file is validated before database writes. Invalid files return row errors without importing rows.
 
-The summary integration:
+Organisation ownership is assigned by the server. A conflicting `org_id` is rejected. Mixed-organisation files must be separated before upload.
 
-- Groups available checks into one request per unit-summary action.
-- Uses existing report lines and evidence records as input.
-- Instructs the model to reference supplied identifiers.
-- Instructs the model not to invent policies, measurements or image observations.
-- Does not replace the deterministic assessment.
-- Does not approve claim amounts.
-- Uses `store=False` for Responses API requests.
+Exact repeat records are skipped. Changed records with an existing line ID are not silently overwritten; duplicate handling requires review.
 
-Repeated summary requests can create additional API calls.
+The API imports the report first. The frontend then requests assessment and refreshes the results. If assessment fails, the imported report remains saved.
 
-The OpenAI connection test succeeded. End-to-end summary generation in the interface remains to be verified.
+The upload endpoint accepts CSV bytes directly as the request body rather than multipart form data.
+
+## Evidence matching and reasoning
+
+Matching uses organisation and `unit_id`, then selects evidence sources relevant to the charge type.
+
+When available, the matcher checks SKU, order, FNSKU and shipment identifiers for conflicts.
+
+Receiving, prep, pack and returns samples are stored. Current charge rules use relevant receiving, prep and returns records; pack-specific charge reasoning is not implemented.
+
+### Packaging allegations
+
+Specific packaging rules assess a documented `polybag_not_sealed` allegation.
+
+Supported paths include:
+
+- A matching inspection event and timestamp.
+- An explicitly linked final inspection before dispatch, with documented continuity to dispatch.
+
+Sealed observations can contradict the allegation; unsealed observations can support it. Conflicting observations, missing identifiers, pending inspections or unsuitable timing remain uncertain.
+
+Generic defect fees do not become claims merely because a prep record exists.
+
+### Return-related charges
+
+Return reasoning requires:
+
+- Matching organisation, unit, order and SKU.
+- An explicit return-event reference.
+- Confirmed identity and completed review state.
+- Receipt by the required recipient.
+- A documented return deadline.
+- Valid receipt and capture timestamps.
+- A returned quantity matching the charged quantity.
+
+Partial quantity, late receipt, conflicting identity or the wrong recipient require review. An unrelated return event is silent on the charge.
+
+These fields are development-adapter inputs. Their presence does not verify the deadline’s authority or establish real channel eligibility.
+
+### Other charge types
+
+- Weight-tier fees remain silent without measurements and an applicable fee schedule.
+- Receiving or prep records alone do not establish channel loss.
+- Condition observations alone do not establish responsibility for warehouse damage.
+
+## Duplicate and reimbursement handling
+
+Reconciliation checks duplicate report-line IDs and repeated source-transaction references.
+
+Reimbursements are summed only when explicitly linked to the charge and consistent with the required identity and currency checks.
+
+The implementation handles:
+
+- Partial and full linked reimbursements.
+- Duplicate payment lines or transaction references.
+- Unallocated possible reimbursements.
+- Invalid payment amounts.
+- Over-reimbursement.
+- Organisation separation.
+
+A fully reimbursed charge receives `ALREADY_REIMBURSED` claim status. This does not establish whether the original allegation was correct.
+
+A remaining reported balance is not an approved recoverable amount. No linked payment does not prove that the imported payment history is complete.
+
+## Potential claims and review packets
+
+For supported fee scenarios with contradicting cited evidence, the application calculates a conditional potential amount using:
+
+- The reported fee, when no linked reimbursement is found; or
+- The reported fee minus validated, explicitly linked reimbursements.
+
+Duplicate flags, missing citations, inconsistent reconciliation and unsupported valuation prevent calculation.
+
+Inventory-loss recovery requires a separate valuation basis and is not calculated from the current report amount.
+
+Review packets include the report row, cited evidence, assessment, reconciliation, potential amount, human reviews, policy context and outstanding checks.
+
+Approved amounts remain unset and submission readiness remains false.
+
+Synthetic development scenarios are labelled as synthetic. A calculated demo amount does not establish an actual marketplace recovery.
+
+## AI summaries
+
+OpenAI summarises available report lines and matched evidence for a unit.
+
+The integration:
+
+- Batches the unit’s available records into one model request per summary action.
+- Includes reconciliation information.
+- Requests references to supplied report and evidence IDs.
+- Instructs the model not to invent rules, measurements or photograph contents.
+- Preserves deterministic assessments.
+- Does not approve claims.
+- Uses `store=False`.
+
+End-to-end summary generation has been demonstrated in the dashboard. Summaries remain reviewer aids and require checking against source records.
+
+Repeated requests can produce additional model calls.
 
 ### Failure handling
 
-A summary request marks processing as `pending` before the model call.
+Pending state is saved before the model request. Timeout, provider error, empty output or incomplete output leaves the original records and assessments available.
 
-If the model request fails, the imported records and original assessment remain available. The summary stays pending and an error message indicates that it was not completed.
+Failures retain pending status and return a generic retry message without exposing provider exception details.
 
-Background processing runs inside the API process. It is not a durable job queue, and a server restart can interrupt pending work.
+Background work runs in the API process. It is not a durable queue, and process interruption can leave work pending.
 
-## Organisation isolation
+## Organisation isolation and reviews
 
-Demo access tokens map to:
+Demo tokens map to `org_demo_alpha` and `org_demo_bravo`.
 
-- `org_demo_alpha`
-- `org_demo_bravo`
+The backend derives organisation ownership from authentication. PostgreSQL RLS enforces the active organisation context.
 
-The backend derives the organisation from the authenticated token. The client cannot choose another organisation through a request body.
+All-table isolation checks passed for records, decisions and reviews, including cross-organisation reads and inserts, decision updates, ownership changes, review relationships and missing organisation context.
 
-PostgreSQL row-level security restricts access to the active organisation.
+A cross-organisation request for an Alpha review packet using Bravo credentials returned 404.
 
-The current authentication mechanism is intended for demonstration. It does not provide individual user accounts, token expiry, account recovery or role management.
-
-Human reviewers are identified as organisation demo-token holders.
-
-## Human review history
-
-Each saved review includes:
+Human reviews preserve:
 
 - The original decision snapshot.
-- The reviewed assessment.
-- A required explanation.
+- The new assessment.
+- A required reason.
 - A reviewer identifier.
-- A creation timestamp.
+- A timestamp.
 
-Human reviews do not overwrite the original assessment and do not approve a claim amount.
+Reviews do not overwrite original assessments or approve claim amounts.
 
-## Reference data
+Demo-token authentication does not provide individual accounts, token expiry or production role management.
 
-All provided CSV rows are synthetic.
+## Policy and evidence-contract status
 
-Sample SKUs, identifiers, requirement flags and monetary values are not authoritative marketplace rules or fees.
+Policy-source tracking records retrieval status and, when available, source content, retrieval time and a content hash.
 
-The imported dataset contains:
+The attempted Amazon bagging-policy retrieval remains `PENDING_SOURCE_REVIEW`. Applicable marketplace, event-date requirements and dispute eligibility remain unverified.
+
+Tracking a source URL is not equivalent to verifying an applicable policy.
+
+Compatibility with the organiser’s official cross-manager evidence contract has not been verified. The provided CSV samples and additional development fields are not presented as that contract.
+
+## Reference and development data
+
+The organiser supplied 276 synthetic reference rows:
 
 | Source | Alpha | Bravo | Total |
 | --- | ---: | ---: | ---: |
@@ -328,84 +447,102 @@ The imported dataset contains:
 | Prep | 41 | 21 | 62 |
 | Pack | 20 | 9 | 29 |
 | Returns | 11 | 13 | 24 |
-| **Total** | **179** | **97** | **276** |
+| Total | 179 | 97 | 276 |
 
-Photo paths are sample references. The application does not verify, retrieve or display the referenced images as evidence.
+Additional synthetic development records demonstrate packaging outcomes, duplicate transactions, reimbursements and returns.
 
-## Verification and current results
-
-### Organisation isolation test
+Optional demo commands:
 
 ```powershell
 $env:PYTHONPATH = "backend"
-.\backend\.venv\Scripts\python.exe backend\tests\test_isolation.py
+.\backend\.venv\Scripts\python.exe -m recovery.seed_demo
+.\backend\.venv\Scripts\python.exe -m recovery.seed_reconciliation_demo
+.\backend\.venv\Scripts\python.exe -m recovery.seed_returns_demo
+.\backend\.venv\Scripts\python.exe -m recovery.decisions
 ```
 
-Observed results:
+Sample identifiers, requirement flags, deadlines and monetary amounts are invented and are not authoritative marketplace rules.
 
-- Alpha can read its own test decision.
-- Bravo cannot read or update Alpha's test decision.
+Photo paths are references only. The application does not retrieve or verify the referenced images.
 
-These checks cover decision access. They do not establish complete isolation coverage for every table or image-storage operation.
+## Verification
 
-### Sample assessment run
+The following tests passed during development:
 
-| Organisation | Financial lines | SILENT | UNCERTAIN |
-| --- | ---: | ---: | ---: |
-| Alpha | 40 | 26 | 14 |
-| Bravo | 21 | 17 | 4 |
-| **Total** | **61** | **43** | **18** |
+| Test suite | Tests |
+| --- | ---: |
+| Packaging rules | 10 |
+| Shipment timing and continuity | 12 |
+| Return receipt rules | 16 |
+| Reconciliation | 15 |
+| Potential claim calculation | 11 |
+| AI success and failure handling | 5 |
+| CSV validation | 18 |
+| Total | 87 |
 
-These are output counts, not accuracy measurements.
+Database isolation checks passed separately.
 
-### Other observed checks
+Run individual suites from the repository root, for example:
 
-- Database connection reports the restricted `recovery_app` role.
-- All 276 reference rows were imported.
-- The frontend displays Alpha's 40 financial lines.
-- A human review was saved while retaining the original assessment.
-- A direct OpenAI API connection test returned successfully.
+```powershell
+$env:PYTHONPATH = "backend"
+.\backend\.venv\Scripts\python.exe backend\tests\test_report_upload.py
+.\backend\.venv\Scripts\python.exe backend\tests\test_return_rules.py
+.\backend\.venv\Scripts\python.exe backend\tests\test_all_table_isolation.py
+```
 
-### Evaluation status
+Dashboard checks demonstrated:
 
-An independent evaluation on 50 unseen units with two human labellers has not been completed.
+- Successful CSV import and assessment refresh.
+- Exact-repeat skipping on reupload.
+- Rejection of a conflicting organisation ID.
+- Human-review preservation.
+- AI summary generation.
+- Partial reimbursement and conditional amount display.
+- Recovery review packet export.
 
-Claim precision, per-check false positives, false negatives and labeller agreement are therefore not reported. The sample records are not treated as labelled ground truth.
+The observed local dataset after demo seeding and one upload contained:
+
+| Organisation | Financial lines | SILENT | UNCERTAIN | CONTRADICTS | SUPPORTS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Alpha | 55 | 31 | 20 | 3 | 1 |
+| Bravo | 21 | 17 | 4 | 0 | 0 |
+
+These counts depend on imported data. They are output distributions, not accuracy measurements.
+
+## Independent evaluation
+
+An evaluation runner prepares cases and separate reviewer templates.
+
+Independent evaluation on 50 unseen units labelled by two humans has not been completed. Claim precision, false positives, false negatives and human-label agreement are therefore not claimed.
+
+Development tests, demo cases and the organiser’s unlabelled samples do not substitute for independent evaluation.
 
 ## Assumptions and limitations
 
-- The integration currently follows the provided CSV shapes. Compatibility with the official cross-manager evidence contract has not been verified.
-- Financial data enters through the command-line importer; a report-upload interface is not implemented.
-- Matching depends on supplied identifiers and does not establish chain of custody.
-- Authoritative marketplace requirements and fee schedules are not integrated.
-- Sample requirement flags are not used as authoritative policy.
-- Automatic `SUPPORTS` reasoning is not implemented.
-- Recoverable amounts are not established.
+- Real policy applicability and dispute eligibility remain unverified.
+- Official evidence-contract compatibility remains unverified.
+- Matching depends on documented identifiers and does not establish source authenticity or custody.
+- Reasoning coverage is strongest for specific packaging and return-receipt scenarios.
+- Current uploads accept supported CSV financial reports, not PDF or arbitrary document formats.
+- Operational evidence is imported separately; the dashboard upload handles financial reports.
+- Conditional potential amounts are not approved recoverable amounts.
 - Claims are not filed automatically.
-- Evidence images are not uploaded, verified or served.
-- Content hashes help identify identical imported rows; they do not make records immutable or tamper-evident.
-- AI summaries require human checking against original records.
-- AI background tasks are not durable.
-- The application uses demo organisation tokens rather than production user authentication.
-- Human review does not establish evidence sufficiency or monetary eligibility.
+- Images are not uploaded, verified or served.
+- Content hashes support repeat detection; they do not make records immutable or tamper-evident.
+- AI summaries may contain mistakes.
+- Background summary processing is not durable.
+- Authentication uses demo organisation tokens.
+- Independent evaluation remains incomplete.
+- Local verification does not establish that every deployed environment behaves identically.
 
 ## Security and secrets
 
-Never commit API keys, database passwords, organisation tokens or `.env` files containing credentials.
+Never commit database passwords, API keys, organisation tokens or environment files containing credentials.
 
-Use the restricted database role for application requests.
+Use the restricted application database role.
 
-If a credential is exposed, rotate or revoke it. Removing it from a file alone does not invalidate the exposed credential.
-
-## Submission materials
-
-- **GitHub:** https://github.com/mdmoghnishah/cube26-rcy-0266-mdmoghnishah
--  **Architecture documentation:** [ARCHITECTURE.md](ARCHITECTURE.md)
-- **Demo video:** https://drive.google.com/drive/folders/1g4mpnY7lUL1tk6T_L2pIgOCrxGWAs8y5
-- **Live deployment:** [Recovery Manager](https://cube26-rcy-0266-mdmoghnishah.vercel.app/)
-- **LinkedIn post:** [View the project post](https://www.linkedin.com/posts/contact-moghnishah_github-mdmoghnishahcube26-rcy-0266-mdmoghnishah-share-7511492023514914816-CPhs/)
-
-Update these entries with accessible final links before submitting.
+If a credential is exposed, rotate or revoke it. Deleting it from a file does not invalidate the exposed credential.
 
 ## Author
 
