@@ -21,6 +21,8 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [reviewVerdict, setReviewVerdict] = useState("UNCERTAIN");
   const [reviewReason, setReviewReason] = useState("");
+  const [reportFile, setReportFile] = useState(null);
+  const [uploadErrors, setUploadErrors] = useState([]);
 
   // Ignore responses from an earlier connection or selection.
   const requestVersion = useRef(0);
@@ -225,6 +227,8 @@ export default function Home() {
     setReviewVerdict("UNCERTAIN");
     setBusy(false);
     setMessage("");
+    setReportFile(null);
+    setUploadErrors([]);
   }
 
   function downloadDecision() {
@@ -257,28 +261,28 @@ export default function Home() {
     (item) => item.result.assessment === "SILENT"
   ).length;
 
-async function generateAiSummary() {
-  if (!selected) return;
+  async function generateAiSummary() {
+    if (!selected) return;
 
-  const version = ++requestVersion.current;
-  const decisionId = selected.id;
-  const accessToken = token.trim();
+    const version = ++requestVersion.current;
+    const decisionId = selected.id;
+    const accessToken = token.trim();
 
-  setBusy(true);
-  setMessage("");
+    setBusy(true);
+    setMessage("");
 
-  try {
-    await request(
-      `/decisions/${decisionId}/ai-summary`,
-      accessToken,
-      "POST"
-    );
+    try {
+      await request(
+        `/decisions/${decisionId}/ai-summary`,
+        accessToken,
+        "POST"
+      );
 
-    if (version !== requestVersion.current) return;
+      if (version !== requestVersion.current) return;
 
-    setSelected((current) =>
-      current?.id === decisionId
-        ? {
+      setSelected((current) =>
+        current?.id === decisionId
+          ? {
             ...current,
             result: {
               ...current.result,
@@ -287,53 +291,53 @@ async function generateAiSummary() {
               ai_error: null,
             },
           }
-        : current
-    );
-
-    setMessage("Generating AI summary…");
-
-    for (let attempt = 0; attempt < 30; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      if (version !== requestVersion.current) return;
-
-      const detail = await request(
-        `/decisions/${decisionId}`,
-        accessToken
-      );
-
-      if (version !== requestVersion.current) return;
-
-      setSelected((current) =>
-        current?.id === decisionId
-          ? { ...current, ...detail }
           : current
       );
 
-      if (detail.result.ai_error) {
-        setMessage(detail.result.ai_error);
-        return;
+      setMessage("Generating AI summary…");
+
+      for (let attempt = 0; attempt < 30; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        if (version !== requestVersion.current) return;
+
+        const detail = await request(
+          `/decisions/${decisionId}`,
+          accessToken
+        );
+
+        if (version !== requestVersion.current) return;
+
+        setSelected((current) =>
+          current?.id === decisionId
+            ? { ...current, ...detail }
+            : current
+        );
+
+        if (detail.result.ai_error) {
+          setMessage(detail.result.ai_error);
+          return;
+        }
+
+        if (detail.result.ai_status === "complete") {
+          setMessage("AI summary generated.");
+          return;
+        }
       }
 
-      if (detail.result.ai_status === "complete") {
-        setMessage("AI summary generated.");
-        return;
+      setMessage(
+        "Summary is still pending. Select this report line again later to refresh it."
+      );
+    } catch (error) {
+      if (version === requestVersion.current) {
+        setMessage(error.message);
       }
-    }
-
-    setMessage(
-      "Summary is still pending. Select this report line again later to refresh it."
-    );
-  } catch (error) {
-    if (version === requestVersion.current) {
-      setMessage(error.message);
-    }
-  } finally {
-    if (version === requestVersion.current) {
-      setBusy(false);
+    } finally {
+      if (version === requestVersion.current) {
+        setBusy(false);
+      }
     }
   }
-}
   async function downloadReviewPacket() {
     if (!selected) return;
 
@@ -410,6 +414,84 @@ async function generateAiSummary() {
       }
     }
   }
+  async function uploadReport() {
+    if (!reportFile || !organization || busy) return;
+
+    const version = ++requestVersion.current;
+    const accessToken = token.trim();
+    const file = reportFile;
+    let imported = null;
+
+    setBusy(true);
+    setMessage("");
+    setUploadErrors([]);
+
+    try {
+      if (file.size === 0 || file.size > 2 * 1024 * 1024) {
+        throw new Error("Choose a nonempty CSV file of at most 2 MB.");
+      }
+
+      const response = await fetch(`${API}/reports/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "text/csv",
+        },
+        body: file,
+      });
+
+      const body = await response.json();
+
+      if (version !== requestVersion.current) return;
+
+      if (!response.ok) {
+        const detail = body.detail;
+
+        if (detail && typeof detail === "object") {
+          setUploadErrors(
+            Array.isArray(detail.errors) ? detail.errors : []
+          );
+          throw new Error(detail.message || "Upload failed.");
+        }
+
+        throw new Error(
+          typeof detail === "string" ? detail : "Upload failed."
+        );
+      }
+
+      imported = body;
+
+      setMessage(
+        `Imported ${body.inserted} rows; skipped ${body.already_present} exact repeats. Assessing records…`
+      );
+
+      await request("/assessments", accessToken, "POST");
+
+      if (version !== requestVersion.current) return;
+
+      const refreshed = await request("/decisions", accessToken);
+
+      if (version !== requestVersion.current) return;
+
+      setDecisions(refreshed.decisions);
+      setSelected(null);
+      setMessage(
+        `Upload complete: ${body.inserted} rows imported, ${body.already_present} exact repeats skipped. Assessments refreshed.`
+      );
+    } catch (error) {
+      if (version !== requestVersion.current) return;
+
+      setMessage(
+        imported
+          ? `Report saved, but assessment or refresh failed: ${error.message} Use Reassess records to retry.`
+          : error.message
+      );
+    } finally {
+      if (version === requestVersion.current) {
+        setBusy(false);
+      }
+    }
+  }
 
   return (
     <main>
@@ -470,6 +552,64 @@ async function generateAiSummary() {
 
       {organization && (
         <>
+          <section className="panel">
+            <h2>Upload a financial report</h2>
+
+            <p>
+              Upload a UTF-8 CSV. Maximum 2 MB and 5,000 rows.
+            </p>
+
+            <p className="note">
+              Required columns: line_id, report_type, unit_id,
+              charge_type, quantity, amount_usd, posted_date.
+              Any supplied org_id must match your organisation.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                flexWrap: "wrap",
+                marginTop: "16px",
+              }}
+            >
+              <input
+                key={organization}
+                type="file"
+                accept=".csv,text/csv"
+                aria-label="Financial report CSV"
+                disabled={busy}
+                onChange={(event) => {
+                  setReportFile(event.target.files?.[0] || null);
+                  setUploadErrors([]);
+                }}
+              />
+
+              <button
+                onClick={uploadReport}
+                disabled={busy || !reportFile}
+              >
+                {busy ? "Working…" : "Upload and assess"}
+              </button>
+            </div>
+
+            {uploadErrors.length > 0 && (
+              <div role="alert" style={{ marginTop: "16px" }}>
+                <h3>Correct these errors and upload again</h3>
+
+                <ul style={{ paddingLeft: "24px" }}>
+                  {uploadErrors.map((error, index) => (
+                    <li key={`${index}-${error.row}-${error.field}`}>
+                      {error.row != null ? `Row ${error.row}: ` : ""}
+                      {error.field} — {error.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
           <section className="metrics">
             <div className="panel">
               <span>Financial lines</span>

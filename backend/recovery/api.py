@@ -19,6 +19,15 @@ from recovery.db import connection
 from recovery.decisions import assess_organization
 from recovery.packets import build_review_packet
 
+from fastapi import Request
+from starlette.concurrency import run_in_threadpool
+
+from recovery.report_upload import (
+    MAX_BYTES,
+    ReportValidationError,
+    import_report,
+)
+
 app = FastAPI(
     title="Recovery Manager",
     version="0.1.0",
@@ -281,3 +290,59 @@ def get_review_packet(
     )
 
     return build_review_packet(decision)
+@app.post("/reports/upload", status_code=201)
+async def upload_report(
+    request: Request,
+    org_id=Depends(authenticated_org),
+):
+    content_type = (
+        request.headers.get("content-type", "")
+        .split(";", 1)[0]
+        .strip()
+        .lower()
+    )
+
+    if content_type not in {
+        "text/csv",
+        "application/csv",
+        "application/octet-stream",
+    }:
+        raise HTTPException(
+            status_code=415,
+            detail="Send the CSV file as the request body.",
+        )
+
+    content = bytearray()
+
+    async for chunk in request.stream():
+        if len(content) + len(chunk) > MAX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="CSV file must be at most 2 MB.",
+            )
+
+        content.extend(chunk)
+
+    try:
+        imported = await run_in_threadpool(
+            import_report,
+            bytes(content),
+            org_id,
+        )
+
+    except ReportValidationError as error:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Report validation failed. No rows imported.",
+                "errors": error.errors,
+            },
+        ) from None
+
+    return {
+        **imported,
+        "assessment_status": "NOT_STARTED",
+        "message": (
+            "Report imported. Run assessments to refresh decisions."
+        ),
+    }
