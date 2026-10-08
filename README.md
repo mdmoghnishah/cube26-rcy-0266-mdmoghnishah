@@ -219,6 +219,10 @@ Identical imported rows are skipped using organisation, source kind and content 
 - API documentation: http://localhost:8000/docs
 - Health endpoint: http://localhost:8000/health
 
+## Round 3 orchestrator endpoint
+
+`POST /run` accepts a CUBE Round 3 Agent Input and returns an Agent Output with an Evidence Record v1.0 (`stage: recovery`, `agent_id: recovery-manager@1.0.0`). It reads `previous_evidence` from the upstream agents plus the fee lines for the subject, runs the existing Python rules, and fails open to a `pending` record on any error. It needs no database connection. See [docs/ROUND3-ADAPTER.md](docs/ROUND3-ADAPTER.md).
+
 ## Frontend setup
 
 Open a second terminal:

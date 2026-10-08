@@ -20,6 +20,7 @@ from recovery.decisions import assess_organization
 from recovery.packets import build_review_packet
 
 from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from recovery.report_upload import (
@@ -27,6 +28,7 @@ from recovery.report_upload import (
     ReportValidationError,
     import_report,
 )
+from recovery import round3
 
 app = FastAPI(
     title="Recovery Manager",
@@ -90,7 +92,56 @@ def health():
     return {
         "status": "ok",
         "service": "Recovery Manager",
+        "stage": round3.STAGE,
+        "agent_id": round3.AGENT_ID,
+        "contract_version": round3.CONTRACT_VERSION,
+        "round3": {
+            "run": "/run",
+            "demo_cases": "/demo/cases",
+            "rule_version": round3.RULE_VERSION,
+            "anthropic_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+        },
     }
+
+
+@app.post("/run")
+async def run_round3(request: Request):
+    """Round 3 orchestrator entry: Agent Input in, Agent Output out.
+
+    No bearer token: the orchestrator is trusted and the subject org is
+    restricted to the demo organisations. 422 malformed, 404 unknown
+    tenant, otherwise 200 with a completed or fail-open pending record.
+    """
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_agent_input", "detail": "Body must be JSON."},
+        )
+
+    status_code, output = await run_in_threadpool(round3.run_round3, body)
+    return JSONResponse(status_code=status_code, content=output)
+
+
+@app.get("/demo/cases")
+def demo_cases():
+    """Frozen stories for the stage. They do not call a model."""
+    cases = []
+    for case in round3.demo_cases():
+        _status, output = round3.run_round3(case["body"])
+        cases.append(
+            {
+                "case_id": case["case_id"],
+                "title": case["title"],
+                "expect_outcome": case["expect_outcome"],
+                "outcome": output["evidence"]["decision"]["outcome"],
+                "verdict": output["verdict"],
+                "claimable_usd": output["evidence"]["payload"]["claimable_usd"],
+                "claim_filed": False,
+            }
+        )
+    return {"cases": cases}
 
 
 @app.get("/me")

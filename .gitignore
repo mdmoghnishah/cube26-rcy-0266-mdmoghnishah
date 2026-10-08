@@ -23,3 +23,6 @@ __pycache__/
 # Next.js
 node_modules/
 .next/
+
+# Round 3 evidence records written by POST /run (local only)
+data/round3-evidence/
